@@ -359,7 +359,7 @@ function renderCollection() {
   const allCities = [...new Set(all.map(p => p.city || "Elsewhere"))];
   if (allCities.length > 1) html += `<div class="chips" style="margin-top:4px"><button type="button" class="chip${!COLL_CITY ? " on" : ""}" data-a="coll-city" data-city="">All cities</button>${allCities.map(c => `<button type="button" class="chip${COLL_CITY === c ? " on" : ""}" data-a="coll-city" data-city="${esc(c)}">${esc(c)}</button>`).join("")}</div>`;
   if (!got.length && !all.length) html += `<div class="empty"><div class="h1">Nothing here yet</div>Walk close to a ? on the map to find a place, then take photos to collect it.</div>`;
-  let shown = 0;
+  let shown = 0; const hidden = {};
   const lastIn = city => Math.max(0, ...all.filter(p => (p.city || "Elsewhere") === city).map(p => p.got || p.found || 0));
   for (const city of allCities.slice().sort((x, y) => lastIn(y) - lastIn(x))) {
     if (COLL_CITY && COLL_CITY !== city) continue;
@@ -368,6 +368,7 @@ function renderCollection() {
       const list = all.filter(p => p.c === c && (p.city || "Elsewhere") === city); if (!list.length) continue;
       const g = list.filter(p => p.got).sort((a, b) => b.got - a.got), f = list.filter(p => p.found && !p.got), u = list.filter(p => !p.found);
       if (!COLL_CAT && !all.some(p => (p.city || "Elsewhere") === city && p.found)) continue; // cities you haven't started stay out of the way
+      if (!COLL_CAT && !g.length && !f.length) { (hidden[city] || (hidden[city] = [])).push(...u); continue; } // nothing found yet: listed once per city below
       shown++;
       html += `<div class="sec">${esc(CATS[c].many)} · ${esc(city)}</div><div class="grid3">`;
       html += g.map((p, i) => `<button type="button" ${bgAttr((p.photos || [])[0], i, "tile" + (S.newTile === p.id ? " new" : ""))} data-a="detail" data-id="${p.id}"><em>${esc(p.n)}</em></button>`).join("");
@@ -376,6 +377,12 @@ function renderCollection() {
       if (u.length > 3) html += `<div class="tile lock" style="font-size:16px">+${u.length - 3}</div>`;
       html += `</div>`;
     }
+  }
+  for (const [city, list] of Object.entries(hidden)) {
+    const kinds = CAT_ORDER.filter(c => list.some(p => p.c === c));
+    html += `<div class="sec">Still hidden · ${esc(city)}</div><div class="grid3">${kinds.slice(0, 5).map(c => { const p = list.find(x => x.c === c), n = list.filter(x => x.c === c).length;
+      return `<button type="button" class="tile lock" data-a="place" data-id="${p.id}" aria-label="${n} hidden ${esc(CATS[c].many)}">?<small>${n} ${esc(n === 1 ? CATS[c].one : CATS[c].many).toLowerCase()}</small></button>`; }).join("")}${kinds.length > 5 ? `<div class="tile lock" style="font-size:16px">+${kinds.length - 5}</div>` : ""}</div>`;
+    shown++;
   }
   if (all.length && !shown) html += `<div class="empty"><div class="h1">${plural(all.length, "place")} to find</div>They show as ? on the map. Walk within 150 m to see what each one is.</div>`;
   el.innerHTML = html + "</div>";

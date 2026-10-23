@@ -72,7 +72,12 @@ async function miniMap(el, o) {
   const cv = document.createElement("canvas"); cv.width = w * dpr; cv.height = h * dpr;
   const ctx = cv.getContext("2d"); ctx.scale(dpr, dpr);
   el.innerHTML = ""; el.appendChild(cv);
-  await drawMapBox(ctx, 0, 0, w, h, Object.assign({ r: 0 }, o));
+  // draw at once without tiles, then again with the map underneath once tiles arrive (cached ones come back fast)
+  await drawMapBox(ctx, 0, 0, w, h, Object.assign({ r: 0 }, o, { tiles: false }));
+  const cv2 = document.createElement("canvas"); cv2.width = cv.width; cv2.height = cv.height;
+  const c2 = cv2.getContext("2d"); c2.scale(dpr, dpr);
+  const r = await drawMapBox(c2, 0, 0, w, h, Object.assign({ r: 0 }, o));
+  if (r.tiles && cv.isConnected) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(cv2, 0, 0); }
 }
 
 /* ---------- photos for cards ---------- */

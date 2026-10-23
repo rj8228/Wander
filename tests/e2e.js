@@ -82,6 +82,7 @@ const visible = (p, sel, timeout = 4000) => p.locator(sel).first().waitFor({ sta
 const hideToast = p => p.evaluate(() => { const t = document.getElementById("toast"); if (t) t.hidden = true; });
 async function closeLayers(p) { await p.evaluate(() => { while (document.querySelector("#layers .layer")) window.wanderBack(); }); }
 async function tab(p, name) { await closeLayers(p); await p.click(`#nav [data-tab="${name}"]`); }
+const shot = (p, name) => p.screenshot({ path: path.join(OUT, name + ".png") }).catch(() => {});
 function pngSize(buf) { return buf.slice(0, 8).toString("hex") === "89504e470d0a1a0a" ? [buf.readUInt32BE(16), buf.readUInt32BE(20)] : null; }
 
 async function newPage(b, opts = {}) {
@@ -114,6 +115,7 @@ async function onboard(p) {
   ok((await text(p, ".onb .h1")).includes("Find places"), "intro slide 2 after Next");
   await p.click("[data-a=intro-go]");
   ok((await text(p, ".onb .h1")).includes("Wander needs your location"), "why-location screen");
+  await shot(p, "j1-why-location");
   await p.click("[data-a=loc-continue]");
   await p.waitForFunction(() => __wander.S.firstFix, null, { timeout: 8000 }).catch(() => {});
   let c = await W(p);
@@ -130,6 +132,7 @@ async function onboard(p) {
   ok(c.walk >= 22 && c.drive === 0, `walking uncovers a trail of walked cells (${c.walk} walked, ${c.drive} driven)`);
   ok(await visible(p, '.layer[data-id="firstwalk"]'), "after the first walk, the background-location ask appears");
   ok(/Nice first walk · \d+ cells/.test(await text(p, '.layer[data-id="firstwalk"] .tag')), "first-walk sheet counts cells");
+  await shot(p, "j1-first-walk");
   await p.click("[data-a=bg-allow]");
   ok((await text(p, ".onb .h1")).includes("screen off"), "background explanation screen");
   await p.click("[data-a=bg-skip]");
@@ -138,6 +141,7 @@ async function onboard(p) {
   await p.evaluate(() => __wander.map.setView([18.575, 73.79], 15));
   await p.click("[data-a=qd-add]");
   ok((await text(p, '.layer[data-id="quiet"]')).includes("Office"), "added an Office quiet place");
+  await shot(p, "j1-quiet-setup");
   await p.click("[data-a=qd-save]");
   let q = await st(p, () => __wander.S.quiet);
   ok(q.length === 2 && q[0].name === "Home" && q[0].r === 250 && Math.abs(q[0].lat - 18.5204) < 1e-3, "quiet places saved (Home 250 m at the first fix, Office)");
@@ -162,6 +166,7 @@ async function onboard(p) {
   ok(c.drive > before.drive + 20, `driving uncovers driven cells (${c.drive - before.drive})`);
   ok(await visible(p, "#legend"), "walked/driven legend chip appears");
   ok((await text(p, "#hud .sub")).includes("driven"), "HUD splits walked and driven");
+  await hideToast(p); await shot(p, "j2-driven");
   const midDrive = offset(leave, -2700, 0), midKey = C.cellAt(...midDrive);
   ok(await p.evaluate(k => __wander.DRIVE.has(k), midKey), "a road cell is marked driven");
   pos = await walk(p, pos, offset(leave, -2500, 0), 20, 10000); // walk back along the road
@@ -175,6 +180,7 @@ async function onboard(p) {
   ok(/\d+ \? places? near today's walk/.test(chipTxt), `hint chip text (${chipTxt})`);
   await p.click("#chip");
   ok(await visible(p, '.layer[data-id="hints"]'), "nearby hints list");
+  await shot(p, "j2-hints");
   const hintRow = await text(p, '.layer[data-id="hints"] [data-a=hint]');
   ok(/\? A (café|park|viewpoint|museum|landmark)/.test(hintRow) && /(north|south|east|west)/.test(hintRow) && /\d+ (m|km)/.test(hintRow), `hint row has kind, distance and direction (${hintRow.trim()})`);
   ok(!/Vohuman|Saras|Parvati/.test(await text(p, '.layer[data-id="hints"]')), "hint names stay hidden until you're close");
@@ -182,6 +188,7 @@ async function onboard(p) {
   ok((await text(p, "#hud")).includes("Heading to") && (await text(p, "#hud")).includes("within 150 m"), "guide HUD: heading to a ? place");
   ok((await text(p, "#chip")) === "Open in Google Maps", "guide offers Google Maps");
   ok(await p.locator('.leaflet-overlay-pane path[stroke="#2563eb"]').count() === 1, "dashed guide line drawn");
+  await shot(p, "j2-guide");
   await p.click("[data-a=guide-end]");
   ok(!(await text(p, "#hud")).includes("Heading to"), "guide closed");
   ok((await text(p, "#hud-streak")) === "1-day streak", "streak starts at 1");
@@ -203,10 +210,12 @@ async function onboard(p) {
   await p.click('.leaflet-marker-icon[title="Parvati Hill Viewpoint"]');
   ok((await text(p, '.layer[data-id="place"] .tag')) === "New place found", "place card opens from the pin");
   ok((await text(p, '.layer[data-id="place"]')).includes("Silhouette at the rail"), "place card lists photo ideas");
+  await shot(p, "j3-place-card");
   await p.click('.layer[data-id="place"] [data-a=capture]');
   ok(await visible(p, "#cap"), "capture screen");
   ok((await text(p, "#cap .idea")).includes("Silhouette at the rail") && await p.locator("#cap svg.guide").count() === 1, "capture shows the idea and a pose guide");
   ok((await text(p, "#cap-count")) === "1 of 3", "capture counter 1 of 3");
+  await shot(p, "j3-capture");
   ok(await p.locator("#cap [data-a=collect][disabled]").count() === 1, "collect disabled before any photo");
   await p.setInputFiles("#cap-input", path.join(FIX, "photo.jpg"));
   await p.waitForFunction(() => document.querySelector("#cap-count") && document.querySelector("#cap-count").textContent === "2 of 3", null, { timeout: 5000 }).catch(() => {});
@@ -215,8 +224,10 @@ async function onboard(p) {
   await p.setInputFiles("#cap-input", path.join(FIX, "photo2.jpg"));
   await p.waitForFunction(() => document.querySelectorAll("#cap .thumbs i").length === 2, null, { timeout: 5000 }).catch(() => {});
   ok(await p.locator("#cap .thumbs i").count() === 2, "two photo thumbnails");
+  await shot(p, "j3-captured");
   await p.click("#cap [data-a=collect]");
   ok((await text(p, ".stampc .tag")) === "Collected", "collected stamp");
+  await shot(p, "j3-collected");
   ok(/2 photos · 1 of 1 viewpoints in Pune/.test(await text(p, "#collected-sub")), `collected progress (${await text(p, "#collected-sub")})`);
   let pl = await st(p, () => __wander.S.places.n1001);
   ok(pl.got && pl.photos.length === 2, "place saved as collected with 2 photos");
@@ -229,10 +240,12 @@ async function onboard(p) {
   ok(await tile.count() === 1 && (await tile.textContent()).includes("Parvati Hill Viewpoint"), "new tile is highlighted");
   ok(/url\("data:image\/jpeg/.test(await tile.evaluate(e => getComputedStyle(e).backgroundImage)), "tile shows the photo");
   ok(await p.locator('#v-collection .tile.lock').count() >= 1, "undiscovered places show as locked tiles");
+  await shot(p, "j3-collection");
   await tile.click();
   ok((await text(p, "#detail-name")) === "Parvati Hill Viewpoint", "place detail");
   ok((await text(p, '.layer[data-id="detail"]')).includes("Collected 23 Oct 2026"), "detail shows when it was collected");
   ok(await p.locator("#detail-strip [data-a=photo]").count() === 2, "detail shows both photos");
+  await shot(p, "j3-detail");
   await p.fill("#note", "Sunset over the temple domes.");
   await p.waitForTimeout(400);
   await p.reload(); await p.waitForTimeout(300);
@@ -248,6 +261,7 @@ async function onboard(p) {
   ok((await text(p, '.layer[data-id="city"] .t1')) === "Lisbon, Portugal", "city sheet");
   await p.waitForFunction(() => /\d+ places? to find/.test((document.querySelector("#city-places") || {}).textContent || ""), null, { timeout: 6000 }).catch(() => {});
   ok(/\d+ km² · [\d,]+ cells · \d+ places to find/.test(await text(p, "#city-sub")), `city size, cells and places (${await text(p, "#city-sub")})`);
+  await shot(p, "j4-city");
   const t0 = counters.tiles;
   await p.click("#dl-btn");
   await p.waitForSelector("#dl-done", { timeout: 30000 }).catch(() => {});
@@ -264,6 +278,7 @@ async function onboard(p) {
   ok(await st(p, () => !!__wander.S.tripId), "a trip starts by itself more than 50 km from home");
   ok(await visible(p, '.layer[data-id="welcome"]'), "arrival sheet");
   ok((await text(p, "#welcome-city")) === "Welcome to Lisbon", "welcome to the downloaded city");
+  await shot(p, "j4-welcome");
   await p.click('.layer[data-id="welcome"] [data-a=close]');
   ok((await text(p, "#hud-city")) === "Lisbon" && (await text(p, "#hud-streak")) === "Trip day 1", "HUD switches to the trip city");
   pos = await walk(p, pos, offset([38.7166, -9.1310], -100, -20), 20, 10000);
@@ -287,6 +302,7 @@ async function onboard(p) {
   ok(await p.locator("#recap-map canvas").count() === 1, "recap map");
   await p.click('.layer[data-id="recap"] [data-a=star]');
   ok(await p.locator('.layer[data-id="recap"] .sel.star').count() === 1, "starred a favourite");
+  await shot(p, "j4-recap");
   await p.click('.layer[data-id="recap"] [data-a=recap-done]');
   ok(!(await text(p, "#chip")).includes("recap"), "recap chip goes away once done");
   // day 2
@@ -314,6 +330,7 @@ async function onboard(p) {
   ok(/^Lisbon, Oct 2026$/.test((await text(p, '.layer[data-id="trip"] h1')).trim()), "memory lane opens");
   ok(/3 days · [\d.]+ km · 2 new places · \+[\d.]+%/.test(await text(p, "#trip-sub")), `memory lane stats (${await text(p, "#trip-sub")})`);
   ok((await text(p, '.layer[data-id="trip"]')).includes("Day 2 · Castelo de São Jorge"), "days listed with their places");
+  await shot(p, "j4-memory-lane");
   ok((await text(p, '.layer[data-id="trip"] [data-a=highlights]')).includes("1 starred"), "highlights button counts stars");
   await p.click('.layer[data-id="trip"] [data-a=highlights]');
   ok(await p.locator("#hl-grid .tile .sel").count() === 1, "starred photo preselected");
@@ -330,6 +347,7 @@ async function onboard(p) {
   J = "5 Look back";
   await tab(p, "trips");
   ok((await text(p, "#v-trips")).includes("1 trip · 1 city"), "Trips summary");
+  await shot(p, "j5-trips");
   ok(/Lisbon\s*Oct 2026 · 3 days · \+/.test(await text(p, "#v-trips [data-a=trip]")), "trip row");
   ok(await p.locator('#nav [data-tab="trips"] .dot').count() === 0, "dot cleared after viewing the memory lane");
   await p.click("#v-trips [data-a=trip]");
@@ -345,6 +363,7 @@ async function onboard(p) {
   ok(stats[0].startsWith("2") && stats[0].includes("cities") && stats[1].startsWith("2") && stats[2].startsWith("3"), `Me: cities, countries, places (${stats.slice(0, 3).join(" | ")})`);
   ok(/km²/.test(stats[3]) && /longest streak/.test(stats[4]) && /km/.test(stats[5]), "Me: area, streak, km on foot");
   ok(await p.locator("#me-map canvas").count() === 1, "Me map drawn");
+  await shot(p, "j5-me");
   await p.click("[data-a=share-year]");
   await p.waitForSelector("#card-img", { timeout: 15000 }).catch(() => {});
   ok((await st(p, () => __wander.CARD && __wander.CARD.kind)) === "year" && (await p.locator("#card-img").count()) === 1, "Share my year card");
@@ -420,6 +439,7 @@ async function onboard(p) {
   await goTo(p, ...pos, 60000);
   await p.click("#pill");
   ok((await text(p, '.layer[data-id="pause"]')).includes("Until tomorrow"), "pause sheet");
+  await shot(p, "j7-pause");
   await p.click('[data-a=pause][data-k=tomorrow]');
   ok((await text(p, "#pill")).includes("Paused until tomorrow") && await p.locator("#pill.off").count() === 1, "pill shows paused");
   const pausedAt = await W(p);
@@ -434,6 +454,7 @@ async function onboard(p) {
   await tab(p, "me");
   await p.click("[data-a=settings]");
   ok(await visible(p, '.layer[data-id="settings"]'), "settings");
+  await shot(p, "j7-settings");
   await p.click("[data-a=theme-pick]");
   await p.click('[data-a=theme][data-k=night]');
   ok((await p.getAttribute("html", "data-theme")) === "night", "Night explorer theme applied");
