@@ -492,7 +492,7 @@ async function onboard(p) {
       requestPermission: k => { log.push(["requestPermission", k]); setTimeout(() => { if (k === "location") st.fine = st.coarse = true; if (k === "background") st.background = true; if (k === "notifications") st.notify = true; window.wanderOnPermission && window.wanderOnPermission(); }, 30); return true; },
       startTracking: m => log.push(["startTracking", m]),
       takePoints: () => JSON.stringify(window.__nq.splice(0)),
-      status: () => JSON.stringify({ running: true, mode: "active", pausedUntil: paused, perms: st, last: null }),
+      status: () => JSON.stringify({ running: true, mode: window.__nmode || "active", pausedUntil: paused, perms: st, last: window.__nlast || null }),
       setQuietPlaces: j => log.push(["setQuietPlaces", JSON.parse(j)]),
       setNearbyPlaces: j => log.push(["setNearbyPlaces", JSON.parse(j)]),
       setKnownCells: j => log.push(["setKnownCells", JSON.parse(j).length]),
@@ -531,6 +531,10 @@ async function onboard(p) {
   ok(await visible(a, '.layer[data-id="quiet"]'), "then quiet places");
   await a.click("[data-a=qd-save]");
   ok(await has("setQuietPlaces", e => e[1].length === 1 && e[1][0].name === "Home" && e[1][0].r === 250), "quiet places pushed to the service");
+  nt += 60000;
+  await a.evaluate(([la, ln, t]) => { window.__nmode = "quiet"; window.__nlast = { lat: la, lng: ln, t, acc: 20 }; window.wanderLaunch(); }, [HOME[0] + 0.0004, HOME[1], nt]);
+  ok((await text(a, "#pill")).includes("Home · quiet, GPS off"), "the service's fix inside Home shows the quiet state (nothing recorded there)");
+  await a.evaluate(() => { window.__nmode = "active"; window.__nlast = null; });
   const drive = []; for (let i = 1; i <= 8; i++) drive.push([...offset(HOME, 1000 + i * 200, 1000), 20]);
   await feed(drive);
   ok((await a.evaluate(() => __wander.DRIVE.size)) > 5, "fast points from the service count as driven");

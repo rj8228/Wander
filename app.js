@@ -431,7 +431,11 @@ function pollNative() {
   if (pts.length) ingest(pts.map(a => ({ t: a[0], lat: a[1], lng: a[2], acc: a[3], spd: a[4] >= 0 ? a[4] : null })));
   try { NST = JSON.parse(nCall("status") || "{}"); } catch (e) { NST = {}; }
   if (NST.pausedUntil != null && NST.pausedUntil !== S.paused) { S.paused = NST.pausedUntil; save(); }
-  if (NST.last && (!S.last || NST.last.t > S.last.t)) S.last = NST.last;
+  if (NST.last && (!S.last || NST.last.t > S.last.t)) {
+    // the service doesn't record inside quiet places, so its latest fix is how the page learns you're home (and a trip is over)
+    S.last = NST.last; tripCheck(NST.last);
+    inQuietNow = S.tracking === "smart" ? quietAt(NST.last.lat, NST.last.lng) : null;
+  }
   updateChrome();
 }
 function knownNear(lat, lng, m, cap) {

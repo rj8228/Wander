@@ -105,12 +105,13 @@ object Notifier {
         return c.timeInMillis
     }
 
+    /** One-shot alarms in a 20-minute window (no exact-alarm permission needed); each one re-arms the next day when it fires. */
     fun schedule(ctx: Context) {
         val am = ctx.getSystemService(AlarmManager::class.java) ?: return
         val streak = alarm(ctx, "streak", 1); val recap = alarm(ctx, "recap", 2)
         am.cancel(streak); am.cancel(recap)
-        am.setInexactRepeating(AlarmManager.RTC_WAKEUP, nextAt(21, 0), AlarmManager.INTERVAL_DAY, streak)
-        am.setInexactRepeating(AlarmManager.RTC_WAKEUP, nextAt(20, 30), AlarmManager.INTERVAL_DAY, recap)
+        am.setWindow(AlarmManager.RTC_WAKEUP, nextAt(21, 0), 20 * 60_000L, streak)
+        am.setWindow(AlarmManager.RTC_WAKEUP, nextAt(20, 30), 20 * 60_000L, recap)
     }
 
     fun onAlarm(ctx: Context, kind: String) {
@@ -141,6 +142,7 @@ object Notifier {
 class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         Notifier.onAlarm(ctx, intent.getStringExtra("kind") ?: "streak")
+        Notifier.schedule(ctx)
     }
 }
 
