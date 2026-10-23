@@ -1,0 +1,79 @@
+name: Build APK
+
+# Every push runs the end-to-end tests, then builds the Android app from the same web files and publishes it as the "latest" release.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # All 7 journeys from the screens spec, in Chromium, offline (tiles, places and cities come from fixtures).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Playwright
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.0
+          npx playwright install --with-deps chromium
+      - name: End-to-end tests
+        run: |
+          python3 -m http.server 8788 --bind 127.0.0.1 > /dev/null 2>&1 &
+          sleep 1
+          node tests/e2e.js
+      - name: Keep test screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: tests/out/*.png
+          if-no-files-found: ignore
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Copy the web app into the APK
+        run: |
+          mkdir -p android/app/src/main/assets
+          cp index.html app.js cards.js ui.js core.js version.js manifest.webmanifest android/app/src/main/assets/
+          cp -r icons vendor fonts c android/app/src/main/assets/
+
+      - name: Write the signing key from secrets
+        env:
+          WANDER_KEYSTORE_BASE64: ${{ secrets.WANDER_KEYSTORE_BASE64 }}
+        run: echo "$WANDER_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/wander.jks"
+
+      - name: Build
+        working-directory: android
+        env:
+          WANDER_KEYSTORE: ${{ runner.temp }}/wander.jks
+          WANDER_KEYSTORE_PASSWORD: ${{ secrets.WANDER_KEYSTORE_PASSWORD }}
+          WANDER_KEY_PASSWORD: ${{ secrets.WANDER_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+
+      # Stops an unsigned APK from being published, and logs the certificate for checking.
+      - name: Check the APK is signed
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs android/app/build/outputs/apk/release/app-release.apk
+
+      - name: Publish latest APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk Wander.apk
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest Wander.apk --title "Wander (latest)" \
+            --notes "Download Wander.apk on your Android phone and tap it to install. Built from ${GITHUB_SHA::7}."

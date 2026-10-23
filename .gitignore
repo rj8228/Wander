@@ -1,0 +1,14 @@
+android/.gradle/
+android/build/
+android/app/build/
+android/app/src/main/assets/
+android/local.properties
+*.iml
+.idea/
+node_modules/
+tests/out/
+# signing keys never live in this repo (CI writes them from secrets)
+*.jks
+*.keystore
+*.p12
+signing.properties

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wander compare</title>
+<meta name="description" content="A friend's Wander fog map. Get the app to uncover your own and compare.">
+<meta name="theme-color" content="#f4f5f7">
+<link rel="icon" href="../icons/icon-192.png">
+<link rel="stylesheet" href="../vendor/leaflet/leaflet.css">
+<style>
+@font-face{font-family:"Bricolage Grotesque";src:url(../fonts/bricolage-grotesque.woff2) format("woff2");font-weight:200 800;font-display:swap}
+@font-face{font-family:"Figtree";src:url(../fonts/figtree-400.woff2) format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"Figtree";src:url(../fonts/figtree-700.woff2) format("woff2");font-weight:700;font-display:swap}
+:root{--bg:#f4f5f7;--card:#fff;--ink:#16181d;--muted:#5f6573;--line:#e7e9ee;--chip:#eceef2;--accent:#ff5a1f;--accent-ink:#b43a0d;--fog:#c9ccd4;--friend:#7c3aed;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#13151b;--card:#1d2028;--ink:#eceef3;--muted:#9aa1b0;--line:#2c303b;--chip:#272b35;--accent:#ff7a45;--accent-ink:#ffb08f;--fog:#3a3f4c;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#13151b;--card:#1d2028;--ink:#eceef3;--muted:#9aa1b0;--line:#2c303b;--chip:#272b35;--accent:#ff7a45;--accent-ink:#ffb08f;--fog:#3a3f4c;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink)}
+body{font:16px/1.5 Figtree,-apple-system,"Segoe UI",system-ui,sans-serif;padding:calc(env(safe-area-inset-top,0px) + 20px) 16px calc(env(safe-area-inset-bottom,0px) + 28px)}
+main{max-width:560px;margin:0 auto}
+.tag{font:700 12px Figtree,system-ui,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-ink)}
+h1{font:800 clamp(26px,7vw,36px)/1.08 "Bricolage Grotesque","Avenir Next",system-ui,sans-serif;letter-spacing:-.02em;margin:6px 0 4px;text-wrap:balance}
+.muted{color:var(--muted)}
+#map{height:min(58vh,440px);border-radius:18px;overflow:hidden;margin:16px 0 12px;background:#e9ebef}
+.btn{display:block;text-align:center;border-radius:14px;padding:14px;font-weight:700;text-decoration:none;margin-top:10px;background:var(--accent);color:#fff}
+.btn.g{background:var(--chip);color:var(--ink)}
+.stats{display:flex;gap:18px;margin-top:4px;font-size:14px;color:var(--muted)}
+.stats b{color:var(--ink);font-size:18px;display:block}
+.fog{pointer-events:none}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <div class="tag">Wander</div>
+  <h1 id="title">Opening a fog map…</h1>
+  <p class="muted" id="sub"></p>
+  <div id="map" hidden></div>
+  <div class="stats" id="stats" hidden></div>
+  <p class="muted">Get the app to uncover your own map and compare.</p>
+  <a class="btn" id="apk" href="https://github.com/rj8228/Wander/releases/download/latest/Wander.apk">Download for Android</a>
+  <a class="btn g" id="open-app" href="#" hidden>Open in the Wander app</a>
+  <a class="btn g" id="web" href="../">Compare in your browser</a>
+  <p class="muted" style="font-size:13px;margin-top:18px">Wander keeps everything on the phone. This page reads the map from the link itself; nothing is sent to a server. Map © <a href="https://www.openstreetmap.org/copyright" style="color:inherit">OpenStreetMap</a> contributors.</p>
+</main>
+<script src="../vendor/leaflet/leaflet.js"></script>
+<script src="../core.js"></script>
+<script>
+(async function () {
+  "use strict";
+  const C = window.WanderCore, $ = id => document.getElementById(id);
+  const code = (location.hash.match(/([AB][A-Za-z0-9_-]+)\s*$/) || [])[1];
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  if (!code) { $("title").textContent = "Uncover your own map"; $("sub").textContent = "This page shows a friend's Wander map when you open their compare link."; return; }
+  let data;
+  try { data = await C.unpackCompare(code); } catch (e) { $("title").textContent = "This link looks broken"; $("sub").textContent = "Ask your friend to send their compare link again."; return; }
+  const m = data.meta, cells = new Set(data.cells), b = m.b;
+  const pct = m.p != null ? m.p : 100 * cells.size / C.boxCells(b);
+  $("title").innerHTML = `${esc(m.n || "A friend")} uncovered ${C.fmtPct(pct)} of ${esc(m.c || "their city")}`;
+  $("sub").textContent = m.d ? "Shared on " + m.d + "." : "";
+  $("stats").hidden = false; $("stats").innerHTML = `<div><b>${cells.size.toLocaleString()}</b>cells</div><div><b>${Math.round(C.boxAreaKm2(b))} km²</b>of city</div>`;
+  $("web").href = "../#c=" + code;
+  if (/Android/i.test(navigator.userAgent)) { const a = $("open-app"); a.hidden = false; a.href = "intent://c?d=" + code + "#Intent;scheme=wander;package=com.raj.wander;end"; }
+  $("map").hidden = false;
+  const fb = C.fitBox([cells], b, 1.5, 0.4);
+  const map = L.map("map", { zoomControl: true, attributionControl: true }).fitBounds([[fb[0], fb[1]], [fb[2], fb[3]]]);
+  map.attributionControl.setPrefix(false);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
+  const fogColor = getComputedStyle(document.documentElement).getPropertyValue("--fog").trim() || "#c9ccd4";
+  const Fog = L.Renderer.extend({
+    _initContainer() { this._container = L.DomUtil.create("canvas", "fog"); this._ctx = this._container.getContext("2d"); },
+    _destroyContainer() { L.DomUtil.remove(this._container); },
+    _update() {
+      if (this._map._animatingZoom && this._bounds) return;
+      L.Renderer.prototype._update.call(this);
+      const bd = this._bounds, sz = bd.getSize(), cv = this._container, dpr = Math.min(devicePixelRatio || 1, 2), mp = this._map;
+      L.DomUtil.setPosition(cv, bd.min); cv.width = sz.x * dpr; cv.height = sz.y * dpr; cv.style.width = sz.x + "px"; cv.style.height = sz.y + "px";
+      const ctx = this._ctx; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.globalAlpha = 0.92; ctx.fillStyle = fogColor; ctx.fillRect(0, 0, sz.x, sz.y); ctx.globalAlpha = 1;
+      const o = mp.getPixelOrigin(), k = 256 * Math.pow(2, mp.getZoom()) / (2 * C.PI_R), ox = o.x + bd.min.x, oy = o.y + bd.min.y, s = C.HEX * k * 1.06;
+      ctx.globalCompositeOperation = "destination-out"; if (s > 5) ctx.filter = "blur(1.5px)";
+      ctx.beginPath();
+      for (const key of cells) {
+        const c = C.cellXY(key), cx = (c[0] + C.PI_R) * k - ox, cy = (C.PI_R - c[1]) * k - oy;
+        if (cx < -50 || cy < -50 || cx > sz.x + 50 || cy > sz.y + 50) continue;
+        if (s < 1.6) { ctx.rect(cx - 1, cy - 1, 2, 2); continue; }
+        for (let i = 0; i < 6; i++) { const a = Math.PI / 180 * (60 * i - 30); ctx[i ? "lineTo" : "moveTo"](cx + Math.cos(a) * s, cy + Math.sin(a) * s); }
+        ctx.closePath();
+      }
+      ctx.fill(); ctx.filter = "none"; ctx.globalCompositeOperation = "source-over";
+    }
+  });
+  map.createPane("fog"); map.getPane("fog").style.zIndex = 350;
+  map.addLayer(new Fog({ pane: "fog", padding: 0.3 }));
+  document.body.dataset.ready = "1";
+})();
+</script>
+</body>
+</html>
