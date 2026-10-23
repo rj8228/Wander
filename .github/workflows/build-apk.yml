@@ -27,7 +27,8 @@ jobs:
         run: |
           python3 -m http.server 8788 --bind 127.0.0.1 > /dev/null 2>&1 &
           sleep 1
-          node tests/e2e.js
+          set -o pipefail
+          node tests/e2e.js 2>&1 | tee e2e.log || { grep -E "^FAIL|Error" e2e.log | head -30 | sed 's/^/::error::/'; exit 1; }
       - name: Keep test screenshots
         if: always()
         uses: actions/upload-artifact@v4
@@ -48,24 +49,35 @@ jobs:
           cp index.html app.js cards.js ui.js core.js version.js manifest.webmanifest android/app/src/main/assets/
           cp -r icons vendor fonts c android/app/src/main/assets/
 
+      # The key is never in this repo. Without the secrets the app is still built (to catch compile errors) but not published.
       - name: Write the signing key from secrets
         env:
           WANDER_KEYSTORE_BASE64: ${{ secrets.WANDER_KEYSTORE_BASE64 }}
-        run: echo "$WANDER_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/wander.jks"
+        run: |
+          if [ -z "$WANDER_KEYSTORE_BASE64" ]; then
+            echo "::warning::WANDER_KEYSTORE_BASE64 is not set: building unsigned to check the code, nothing will be published."
+          else
+            echo "$WANDER_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/wander.jks"
+            echo "WANDER_KEYSTORE=$RUNNER_TEMP/wander.jks" >> "$GITHUB_ENV"
+          fi
 
       - name: Build
         working-directory: android
         env:
-          WANDER_KEYSTORE: ${{ runner.temp }}/wander.jks
           WANDER_KEYSTORE_PASSWORD: ${{ secrets.WANDER_KEYSTORE_PASSWORD }}
           WANDER_KEY_PASSWORD: ${{ secrets.WANDER_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          set -o pipefail
+          ./gradlew assembleRelease --no-daemon 2>&1 | tee ../gradle.log || { grep -E "^e: |error:|What went wrong|FAILED|Exception" -A2 ../gradle.log | head -40 | sed 's/^/::error::/'; exit 1; }
 
       # Stops an unsigned APK from being published, and logs the certificate for checking.
       - name: Check the APK is signed
         run: |
+          if [ -z "$WANDER_KEYSTORE" ]; then
+            echo "::error::Built and tested, but the signing secrets (WANDER_KEYSTORE_BASE64, WANDER_KEYSTORE_PASSWORD, WANDER_KEY_PASSWORD) are missing, so no APK is published."
+            exit 1
+          fi
           APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
           "$APKSIGNER" verify --print-certs android/app/build/outputs/apk/release/app-release.apk
 
