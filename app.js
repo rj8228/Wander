@@ -477,8 +477,13 @@ async function tileBlob(url, network = true) {
   if (!network) throw new Error("not cached");
   const r = await fetch(url, { mode: "cors", credentials: "omit" });
   if (!r.ok) throw new Error("tile " + r.status);
-  if (window.caches) { try { const c = await caches.open(TILE_CACHE); await c.put(url, r.clone()); } catch (e) { /* full */ } }
+  if (window.caches) { try { const c = await caches.open(TILE_CACHE); await c.put(url, r.clone()); if (++tilePuts % 150 === 0) pruneTiles(c); } catch (e) { /* full */ } }
   return r.blob();
+}
+let tilePuts = 0;
+/** Keeps the tile cache to about 3,000 tiles (~50 MB), dropping the oldest first (cache keys keep insertion order). */
+async function pruneTiles(c) {
+  try { const ks = await c.keys(); for (const k of ks.slice(0, Math.max(0, ks.length - 3000))) await c.delete(k); } catch (e) { /* ignore */ }
 }
 const CachedTiles = L.TileLayer.extend({
   createTile(coords, done) {
